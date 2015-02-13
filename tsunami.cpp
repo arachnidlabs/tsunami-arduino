@@ -19,6 +19,8 @@ void Tsunami_Class::begin() {
 
 	amplitude.set(0);
 	offset.set(128);
+
+	dds.begin();
 }
 
 Tsunami_Class Tsunami;

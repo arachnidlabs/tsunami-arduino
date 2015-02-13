@@ -45,6 +45,10 @@ public:
     dds.setFrequency(reg, frequency);
   }
 
+  inline void setFrequency(byte reg, double frequency) {
+    dds.setFrequency(reg, (float)frequency);
+  }
+
   inline void setFrequency(byte reg, float frequency) {
     dds.setFrequency(reg, frequency);
   }
@@ -72,7 +76,7 @@ public:
   inline void setOffset(int off) {
     offset.set(off);
   }
-
+  
 private:
   AD983X_PIN dds;
   MCP4XXX offset;
