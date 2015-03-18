@@ -28,19 +28,6 @@
 #include <mcp4xxx.h>
 #include <tsunami.h>
 
-volatile uint16_t last_edge = -1;
-volatile uint16_t interval = -1;
-
-/* Called whenever we detect a falling edge on the input signal.
- * This routine measures the interval between edges. It's very time critical;
- * the current version takes about 35 cycles to execute, and so can only measure
- * frequencies up to about 400khz reliably.
- */
-ISR(TIMER1_CAPT_vect) {
-  interval = ICR1 - last_edge;
-  last_edge = ICR1;
-}
-
 void setup() {
   // Initialize the serial port
   Serial.begin(115200);
@@ -53,12 +40,6 @@ void setup() {
   
   // Start with a default frequency of 1khz
   Tsunami.setFrequency(0, 1000.0);
-  
-  // Initialize timer 1 to run at full speed and capture external events
-  TCCR1A &= ~_BV(WGM11) & ~_BV(WGM10);
-  TCCR1B &= ~_BV(WGM13) & ~_BV(WGM12) & ~_BV(CS12) & ~_BV(CS11);
-  TCCR1B |= _BV(CS10);
-  TIMSK1 |= _BV(ICIE1);
 }
 
 // Sets the output frequency to the specified value
@@ -82,44 +63,6 @@ int readLine(char *buf, int len) {
         return pos;
     }
   }
-}
-
-/* Measures phase offset, returning a figure between 0 and 1. 0 indicates the
- * signals are 180 degrees out of phase, while 1 indicates the signals are
- * exactly in phase. Note that the analog signal chain imposes some delay,
- * meaning that at higher frequencies there is a significant phase shift that
- * must be accounted for to get accurate measurements; this function does not
- * make any adjustment for that.
- */
-float measurePhase() {
-  return analogRead(TSUNAMI_PHASE) / 1024.0;
-}
-
-/* Measures peak to peak amplitude, returning a value in volts. Note that
- * because of the diode drop on the peak detector, voltages below about 0.16v
- * will register as 0.16v. This effect increases with frequency, which is not
- * accounted for by this function. Also note that a decrease in the amplitude
- * will take some time to show up on the output, as charge leaks from the
- * storage cap. For a more accurate instantaneous reading, set the TSUNAMI_PEAK
- * pin to output, bring it low briefly, then return it to input and wait a while
- * for the capacitor to charge.
- */
-float measurePeakVoltage() {
-  return (analogRead(TSUNAMI_PEAK) / 1024.0) * 10.0 + 0.32;
-}
-
-/* Measures frequency, returning a value in Hz.
- * This works from approximately 250Hz to 400kHz. A more sophisticated routine
- * could measure lower frequencies by reducing the sampling clock rate, and
- * higher frequencies by counting the number of events in a fixed interval
- * instead of the interval between events.
- *
- * Return values are accurate, but will suffer some jitter due to the analog
- * nature of the input signal. Measuring the square wave output will give a more
- * precise result than measuring the sine wave output.
- */
-float measureFrequency() {
-  return 16000000.0 / interval;
 }
 
 // Handles 'freq' commands
@@ -183,9 +126,9 @@ void commandWf(char *name, char *args) {
 }
 
 void commandMeasure(char *name, char *args) {
-  double voltage = measurePeakVoltage();
-  double phase = measurePhase();
-  double frequency = measureFrequency();
+  double voltage = Tsunami.measurePeakVoltage();
+  double phase = Tsunami.measurePhase();
+  double frequency = Tsunami.measureFrequency();
   
   Serial.print("measured ");
   Serial.print(frequency);
