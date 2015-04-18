@@ -1,24 +1,43 @@
 #ifndef __ARDUIN_TSUNAMI_H
 #define __ARDUINO_TSUNAMI_H
 
-#include <ad983x.h>
-#include <mcp4xxx.h>
+#include <Arduino.h>
+#include <SPI.h>
+extern "C" {
+  #include <ad983x/ad983x.h>
+  #include <mcp49xx/mcp49xx.h>
+}
 
 #define TSUNAMI_DDS_CS        8
 #define TSUNAMI_DDS_FSEL      5
 #define TSUNAMI_DDS_PSEL      6
 #define TSUNAMI_DDS_SLEEP     9
-#define TSUNAMI_DDS_RESET     10
-#define TSUNAMI_DDS_SIGN      A0
+#define TSUNAMI_DDS_RESET     11
+#define TSUNAMI_AUX           10
 #define TSUNAMI_PHASE         A1
-#define TSUNAMI_PEAK          A2
-#define TSUNAMI_VIN           A3
+#define TSUNAMI_PEAK          A5
+#define TSUNAMI_VIN           A4
+#define TSUNAMI_AUX_FILTER    A0
+#define TSUNAMI_SIGN_EN       A2
+#define TSUNAMI_VAVG          A3
 #define TSUNAMI_FREQIN_1      4
 #define TSUNAMI_FREQIN_2      12
-#define TSUNAMI_DIGIPOT_CS    7
-#define TSUNAMI_OFFSET_POT    MCP4XXX::pot_0
-#define TSUNAMI_AMPLITUDE_POT MCP4XXX::pot_1
+#define TSUNAMI_DAC_CS        7
+#define TSUNAMI_OFFSET_ID    1
+#define TSUNAMI_AMPLITUDE_ID 0
 #define TSUNAMI_FREQUENCY     16 // MHz
+
+enum SignOutput {
+  SIGN_OUTPUT_NONE        = AD983X_SIGN_OUTPUT_NONE,
+  SIGN_OUTPUT_MSB         = AD983X_SIGN_OUTPUT_MSB,
+  SIGN_OUTPUT_MSB_2       = AD983X_SIGN_OUTPUT_MSB_2,
+  SIGN_OUTPUT_COMPARATOR  = AD983X_SIGN_OUTPUT_COMPARATOR,
+};
+
+enum OutputMode {
+  OUTPUT_MODE_SINE        = AD983X_OUTPUT_MODE_SINE,
+  OUTPUT_MODE_TRIANGLE    = AD983X_OUTPUT_MODE_TRIANGLE,
+};
 
 extern volatile uint16_t tsunami_last_edge;
 extern volatile uint16_t tsunami_interval;
@@ -29,55 +48,65 @@ public:
   void begin();
 
   inline void setFrequencyWord(byte reg, uint32_t frequency) {
-    dds.setFrequencyWord(reg, frequency);
+    ad983x_set_frequency(&dds, reg, frequency);
   }
 
   inline void setPhaseWord(byte reg, uint32_t phase) {
-    dds.setPhaseWord(reg, phase);
+    ad983x_set_phase(&dds, reg, phase);
   }
 
   inline void setSignOutput(SignOutput out) {
-    dds.setSignOutput(out);
+    ad983x_set_sign_output(&dds, (ad983x_sign_output_t)out);
   }
 
   inline void setOutputMode(OutputMode out) {
-    dds.setOutputMode(out);
+    ad983x_set_output_mode(&dds, (ad983x_output_mode_t)out);
   }
 
   // These overloads automatically set the unused frequency register, then
   // switch to it.
   inline void setFrequency(long int frequency) {
     current_reg = 1 - current_reg;
-    dds.setFrequency(current_reg, frequency);
+    setFrequency(current_reg, frequency);
     selectFrequency(current_reg);
   }
 
   inline void setFrequency(double frequency) {
     current_reg = 1 - current_reg;
-    dds.setFrequency(current_reg, (float)frequency);
+    setFrequency(current_reg, (float)frequency);
     selectFrequency(current_reg);
   }
 
   inline void setFrequency(float frequency) {
     current_reg = 1 - current_reg;
-    dds.setFrequency(current_reg, frequency);
+    setFrequency(current_reg, frequency);
     selectFrequency(current_reg);
   }
 
+  inline uint32_t computeFrequencyWord(uint32_t frequency) {
+    // This is a manual expansion of (frequency * 2^28) / m_frequency_mhz
+    // Since it doesn't require 64 bit multiplies or divides, it results in
+    // substantially smaller code sizes.
+    uint32_t lval = ((frequency & 0xFF) << 22) / (15625l * TSUNAMI_FREQUENCY);
+    uint32_t mval = ((frequency & 0xFF00) << 14) / (15625l * TSUNAMI_FREQUENCY);
+    uint32_t hval = ((frequency & 0xFF0000) << 6) / (15625l * TSUNAMI_FREQUENCY);
+    return (hval << 16) + (mval << 8) + lval;
+  }
+
   inline void setFrequency(byte reg, long int frequency)  {
-    dds.setFrequency(reg, frequency);
+    setFrequencyWord(reg, computeFrequencyWord(frequency));
   }
 
   inline void setFrequency(byte reg, double frequency) {
-    dds.setFrequency(reg, (float)frequency);
+    setFrequencyWord(reg, (frequency * (1l << 28)) / (TSUNAMI_FREQUENCY * 1000000));
   }
 
   inline void setFrequency(byte reg, float frequency) {
-    dds.setFrequency(reg, frequency);
+    setFrequencyWord(reg, (frequency * (1l << 28)) / (TSUNAMI_FREQUENCY * 1000000));
   }
 
   inline void reset(boolean in_reset) {
-    dds.reset(in_reset);
+    digitalWrite(TSUNAMI_DDS_RESET, in_reset);
   }
 
   inline void sleep(boolean sleeping) {
@@ -94,7 +123,7 @@ public:
 
   inline void setAmplitude(int amp) {
     //TODO: Accept voltage instead of pot setting values
-    amplitude.set(amp);
+    mcp49xx_write(&dac, TSUNAMI_AMPLITUDE_ID, amp);
   }
 
   /* Measures peak to peak amplitude, returning a value in volts. Note that
@@ -137,13 +166,12 @@ public:
 
   inline void setOffset(int off) {
     // TODO: Provide for voltage instead of pot settings for this value
-    offset.set(off);
+    mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, off);
   }
   
 private:
-  AD983X_PIN dds;
-  MCP4XXX offset;
-  MCP4XXX amplitude;
+  ad983x_t dds;
+  mcp49xx_t dac;
   uint8_t current_reg;
 };
 
