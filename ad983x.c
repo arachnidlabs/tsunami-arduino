@@ -33,10 +33,10 @@ void ad983x_init(ad983x_t *dds, spi_transfer_func func, void *ctx) {
 
 void ad983x_start(ad983x_t *dds) {
 	write_reg(dds, dds->reg);
-	ad983x_set_frequency_word(dds, 0, 0);
-	ad983x_set_frequency_word(dds, 1, 0);
-	ad983x_set_phase_word(dds, 0, 0);
-	ad983x_set_phase_word(dds, 1, 0);
+	ad983x_set_frequency(dds, 0, 0);
+	ad983x_set_frequency(dds, 1, 0);
+	ad983x_set_phase(dds, 0, 0);
+	ad983x_set_phase(dds, 1, 0);
 }
 
 void ad983x_set_frequency(ad983x_t *dds, uint8_t reg, uint32_t frequency) {
@@ -49,13 +49,13 @@ void ad983x_set_phase(ad983x_t *dds, uint8_t reg, uint32_t phase) {
 }
 
 void ad983x_set_sign_output(ad983x_t *dds, ad983x_sign_output_t output) {
-  dds->reg = (dds->reg & ~SIGN_OUTPUT_MASK) | out;
+  dds->reg = (dds->reg & ~SIGN_OUTPUT_MASK) | output;
   write_reg(dds, dds->reg);
 }
 
 void ad983x_set_output_mode(ad983x_t *dds, ad983x_output_mode_t mode) {
-  if(out == AD983X_OUTPUT_MODE_TRIANGLE) {
-    dds->reg = (dds->reg & ~SIGN_OUTPUT_MASK) | out;
+  if(mode == AD983X_OUTPUT_MODE_TRIANGLE) {
+    dds->reg = (dds->reg & ~SIGN_OUTPUT_MASK) | mode;
   } else {
     dds->reg &= ~REG_MODE;
   }
