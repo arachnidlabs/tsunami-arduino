@@ -11,8 +11,6 @@
 
 #include <SoftwareSerial.h>
 #include <SPI.h>
-#include <ad983x.h>
-#include <mcp4xxx.h>
 #include <tsunami.h>
 
 // Create a SoftwareSerial instance that writes to the DDS's frequency

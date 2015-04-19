@@ -24,8 +24,6 @@
  */
 
 #include <SPI.h>
-#include <ad983x.h>
-#include <mcp4xxx.h>
 #include <tsunami.h>
 
 void setup() {
