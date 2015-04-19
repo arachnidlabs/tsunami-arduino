@@ -1,3 +1,6 @@
 [submodule "src/ad983x"]
 	path = src/ad983x
 	url = https://github.com/arachnidlabs/ad983x.git
+[submodule "src/mcp49xx"]
+	path = src/mcp49xx
+	url = https://github.com/arachnidlabs/mcp49xx.git
