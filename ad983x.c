@@ -21,7 +21,10 @@
 #define SIGN_OUTPUT_MASK (REG_OPBITEN | REG_SIGNPIB | REG_DIV2 | REG_MODE)
 
 static void write_reg(ad983x_t *dds, uint16_t value) {
-  dds->spi_transfer(dds->ctx, &(char*){value >> 8, value & 0xff}, 2);
+  char data[2];
+  data[0] = value >> 8;
+  data[1] = value & 0xFF;
+  dds->spi_transfer(dds->ctx, &data, sizeof(data));
 }
 
 void ad983x_init(ad983x_t *dds, spi_transfer_func func, void *ctx) {
