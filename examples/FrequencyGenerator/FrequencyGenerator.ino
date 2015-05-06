@@ -72,20 +72,16 @@ void commandFreq(char *name, char *args) {
 // Handles 'amp' commands
 void commandAmp(char *name, char *args) {
   float amp = atof(args);
-  int wiper;
+  int value = 4096 - (int)(4096 * (amp / 6.0));
 
-  if(amp <= 0) {
-    wiper = 256;
-  } else {
-    // Determined from the Rset and Rfb values and AD9838 parameters
-    wiper = (int)round(-(16 * (13915 * amp - 84132)) / (15625 * amp));
+  if(value <= 0) {
+    value = 0;
+  } else if(value >= 4096) {
+    value = 4095;
   }
   
-  if(wiper > 256) {
-    wiper = 256;
-  }
-
-  Tsunami.setAmplitude(wiper);
+  Serial.println(value);
+  Tsunami.setAmplitude(value);
 
   Serial.println("ok");
 }
@@ -93,21 +89,16 @@ void commandAmp(char *name, char *args) {
 // Handles 'off' commands
 void commandOff(char *name, char *args) {
   float offset = -atof(args);
-  int wiper;
   
-  if(offset == 0.0) {
-    wiper = 128;
-  } else {
-    wiper = (int)round((-0.002048 * sqrt(4300998724.0 * offset * offset + 26265625.0) + 128 * offset + 10.496) / offset);
-  }
+  int value = (int)(2048 - (offset / 3.0) * 2048);
 
-  if(wiper < 0) {
-    wiper = 0;
-  } else if(wiper > 256) {
-    wiper = 256;
+  if(value < 0) {
+    value = 0;
+  } else if(value > 4095) {
+    value = 4095;
   }
   
-  Tsunami.setOffset(wiper);
+  Tsunami.setOffset(value);
   
   Serial.println("ok");
 }

@@ -23,6 +23,8 @@ extern "C" {
 #define TSUNAMI_FREQIN_1      4
 #define TSUNAMI_FREQIN_2      12
 #define TSUNAMI_DAC_CS        7
+#define TSUNAMI_FDIV_SEL_0    31
+#define TSUNAMI_FDIV_SEL_1    30
 #define TSUNAMI_OFFSET_ID    1
 #define TSUNAMI_AMPLITUDE_ID 0
 #define TSUNAMI_FREQUENCY     16 // MHz
@@ -169,9 +171,9 @@ public:
     mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, off);
   }
   
+  mcp49xx_t dac;
 private:
   ad983x_t dds;
-  mcp49xx_t dac;
   uint8_t current_reg;
 };
 
