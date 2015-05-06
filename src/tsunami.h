@@ -29,12 +29,10 @@ extern "C" {
 #define TSUNAMI_AMPLITUDE_ID 0
 #define TSUNAMI_FREQUENCY     16 // MHz
 
-enum SignOutput {
-  SIGN_OUTPUT_NONE        = AD983X_SIGN_OUTPUT_NONE,
-  SIGN_OUTPUT_MSB         = AD983X_SIGN_OUTPUT_MSB,
-  SIGN_OUTPUT_MSB_2       = AD983X_SIGN_OUTPUT_MSB_2,
-  SIGN_OUTPUT_COMPARATOR  = AD983X_SIGN_OUTPUT_COMPARATOR,
-};
+#define TSUNAMI_DAC_BITS     12
+#define TSUNAMI_DAC_MAX      ((1 << TSUNAMI_DAC_BITS) - 1)
+#define TSUNAMI_OFFSET_FS    3731 // Fullscale voltage offset in millivolts
+#define TSUNAMI_AMPLITUDE_FS 6606 // Fullscale amplitude in millivolts
 
 enum OutputMode {
   OUTPUT_MODE_SINE        = AD983X_OUTPUT_MODE_SINE,
@@ -49,104 +47,114 @@ public:
   Tsunami_Class();
   void begin();
 
-  inline void setFrequencyWord(byte reg, uint32_t frequency) {
-    ad983x_set_frequency(&dds, reg, frequency);
-  }
-
-  inline void setPhaseWord(byte reg, uint32_t phase) {
-    ad983x_set_phase(&dds, reg, phase);
-  }
-
-  inline void setSignOutput(SignOutput out) {
-    ad983x_set_sign_output(&dds, (ad983x_sign_output_t)out);
-  }
-
   inline void setOutputMode(OutputMode out) {
     ad983x_set_output_mode(&dds, (ad983x_output_mode_t)out);
   }
 
   // These overloads automatically set the unused frequency register, then
   // switch to it.
+
+  /* Set the output frequency, in Hz.
+   */
   inline void setFrequency(long int frequency) {
-    current_reg = 1 - current_reg;
-    setFrequency(current_reg, frequency);
-    selectFrequency(current_reg);
+    current_frequency_reg = 1 - current_frequency_reg;
+    setFrequency(current_frequency_reg, frequency);
+    selectFrequency(current_frequency_reg);
   }
 
+  /* Set the output frequency, in Hz.
+   */
   inline void setFrequency(double frequency) {
-    current_reg = 1 - current_reg;
-    setFrequency(current_reg, (float)frequency);
-    selectFrequency(current_reg);
+    current_frequency_reg = 1 - current_frequency_reg;
+    setFrequency(current_frequency_reg, (float)frequency);
+    selectFrequency(current_frequency_reg);
   }
 
+  /* Set the output frequency, in Hz.
+   */
   inline void setFrequency(float frequency) {
-    current_reg = 1 - current_reg;
-    setFrequency(current_reg, frequency);
-    selectFrequency(current_reg);
+    current_frequency_reg = 1 - current_frequency_reg;
+    setFrequency(current_frequency_reg, frequency);
+    selectFrequency(current_frequency_reg);
   }
 
-  inline uint32_t computeFrequencyWord(uint32_t frequency) {
-    // This is a manual expansion of (frequency * 2^28) / m_frequency_mhz
-    // Since it doesn't require 64 bit multiplies or divides, it results in
-    // substantially smaller code sizes.
-    uint32_t lval = ((frequency & 0xFF) << 22) / (15625l * TSUNAMI_FREQUENCY);
-    uint32_t mval = ((frequency & 0xFF00) << 14) / (15625l * TSUNAMI_FREQUENCY);
-    uint32_t hval = ((frequency & 0xFF0000) << 6) / (15625l * TSUNAMI_FREQUENCY);
-    return (hval << 16) + (mval << 8) + lval;
-  }
-
+  /* Set the output frequency on a given register, in Hz.
+   */
   inline void setFrequency(byte reg, long int frequency)  {
     setFrequencyWord(reg, computeFrequencyWord(frequency));
   }
 
+  /* Set the output frequency on a given register, in Hz.
+   */
   inline void setFrequency(byte reg, double frequency) {
-    setFrequencyWord(reg, (frequency * (1l << 28)) / (TSUNAMI_FREQUENCY * 1000000));
+    setFrequency(reg, (float)frequency);
   }
 
+  /* Set the output frequency on a given register, in Hz.
+   */
   inline void setFrequency(byte reg, float frequency) {
     setFrequencyWord(reg, (frequency * (1l << 28)) / (TSUNAMI_FREQUENCY * 1000000));
   }
 
+  // TODO: Provide setPhase methods.
+
+  /* Enables or disables the DDS's reset mode.
+   * Reset sets phase accumulator registers to 0, setting the output to
+   * midscale and resetting the starting phase.
+   */
   inline void reset(boolean in_reset) {
     digitalWrite(TSUNAMI_DDS_RESET, in_reset);
   }
 
+  /* Enables or disables the DDS's sleep mode.
+   * Sleep disables the DDS's DAC. The DDS keeps counting, and a square wave is
+   * still output to the AUX port if enabled with auxSignOutput().
+   */
   inline void sleep(boolean sleeping) {
     digitalWrite(TSUNAMI_DDS_SLEEP, sleeping);
   }
 
+  /* Selects which frequency register (0 or 1) is used to control the DDS.
+   */
   inline void selectFrequency(byte reg) {
     digitalWrite(TSUNAMI_DDS_FSEL, reg);
   }
 
+  /* Selects which phase register (0 or 1) is used to control the DDS.
+   */
   inline void selectPhase(byte reg) {
     digitalWrite(TSUNAMI_DDS_PSEL, reg);
   }
 
-  inline void setAmplitude(int amp) {
-    //TODO: Accept voltage instead of pot setting values
-    mcp49xx_write(&dac, TSUNAMI_AMPLITUDE_ID, amp);
+  /*
+   * Sets signal amplitude in millivolts.
+   */
+  inline void setAmplitude(int millivolts) {
+    //TODO: Allow for calibration
+    int32_t value = TSUNAMI_DAC_MAX * (int32_t)millivolts;
+    value /= TSUNAMI_AMPLITUDE_FS;
+    if(value < 0)
+      value = 0;
+    if(value >= TSUNAMI_DAC_MAX)
+      value = TSUNAMI_DAC_MAX;
+
+    mcp49xx_write(&dac, TSUNAMI_AMPLITUDE_ID, TSUNAMI_DAC_MAX - value);
   }
 
-  /* Measures peak to peak amplitude, returning a value in volts. Note that
-   * because of the diode drop on the peak detector, voltages below about 0.16v
-   * will register as 0.16v. This effect increases with frequency, which is not
-   * accounted for by this function. Also note that a decrease in the amplitude
-   * will take some time to show up on the output, as charge leaks from the
-   * storage cap. For a more accurate instantaneous reading, set the TSUNAMI_PEAK
-   * pin to output, bring it low briefly, then return it to input and wait a while
-   * for the capacitor to charge.
+  /* Measures peak to peak amplitude, returning a value in volts. Note that a
+   * decrease in the amplitude will take some time to show up on the output, as
+   * charge leaks from the storage cap. For a more accurate instantaneous
+   * reading, set the TSUNAMI_PEAK pin to output, bring it low briefly, then
+   * return it to input and wait a while for the capacitor to charge.
    */
   inline float measurePeakVoltage() {
     // TODO: Provide for calibration of this value
+    // TODO: Discharge cap, delay, read.
     return (analogRead(TSUNAMI_PEAK) / 1024.0) * 10.0 + 0.32;
   }
 
   /* Measures frequency, returning a value in Hz.
-   * This works from approximately 250Hz to 400kHz. A more sophisticated routine
-   * could measure lower frequencies by reducing the sampling clock rate, and
-   * higher frequencies by counting the number of events in a fixed interval
-   * instead of the interval between events.
+   * This works from approximately 32Hz upwards.
    *
    * Return values are accurate, but will suffer some jitter due to the analog
    * nature of the input signal. Measuring the square wave output will give a more
@@ -166,15 +174,84 @@ public:
     return analogRead(TSUNAMI_PHASE) / 1024.0;
   }
 
-  inline void setOffset(int off) {
-    // TODO: Provide for voltage instead of pot settings for this value
-    mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, off);
+  /* Sets signal offset in millivolts.
+   * When the DDS is disabled (sleep and reset are true), this function can be
+   * used to generate an output waveform directly, albeit at a very low sample
+   * rate.
+   */
+  inline void setOffset(int millivolts) {
+    // TODO: Allow for calibration
+    int32_t value = TSUNAMI_DAC_MAX * (int32_t)(millivolts + TSUNAMI_OFFSET_FS);
+    value /= TSUNAMI_OFFSET_FS * 2;
+    if(value < 0)
+      value = 0;
+    if(value >= TSUNAMI_DAC_MAX)
+      value = TSUNAMI_DAC_MAX;
+
+    mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, value);
+  }
+
+  /* Configures whether or not the DDS sign signal is output on the AUX port.
+   */
+  inline void auxSignOutput(bool enabled) {
+    if(enabled) {
+      pinMode(TSUNAMI_AUX, INPUT);
+      digitalWrite(TSUNAMI_AUX, LOW);
+      digitalWrite(TSUNAMI_SIGN_EN, HIGH);
+    } else {
+      digitalWrite(TSUNAMI_SIGN_EN, LOW);
+    }
+  }
+
+  /* Enable the RC filter on the AUX output.
+   * By disabling auxSignOutput, you can use analogWrite to output either a PWM
+   * signal (with auxFiltering(false)) or a rectified voltage
+   * (with auxFiltering(true)). This can be useful, for instance, to generate
+   * parameter sweeps and graph them on an external tool like an oscilloscope.
+   */
+  inline void auxFiltering(bool enabled) {
+    if(enabled) {
+      pinMode(TSUNAMI_AUX_FILTER, OUTPUT);
+    } else {
+      pinMode(TSUNAMI_AUX_FILTER, INPUT);
+    }
+    digitalWrite(TSUNAMI_AUX_FILTER, LOW);
   }
   
+  // Handle to the underlying DAC.
   mcp49xx_t dac;
-private:
+
+  // Handle to the underlying DDS.
   ad983x_t dds;
-  uint8_t current_reg;
+
+  // The frequency register currently being used
+  uint8_t current_frequency_reg;
+
+  // The phase register currently being used
+  uint8_t current_phase_reg;
+
+private:
+  /* Set the raw frequency control word used by the DDS
+   */
+  inline void setFrequencyWord(byte reg, uint32_t frequency) {
+    ad983x_set_frequency(&dds, reg, frequency);
+  }
+
+  /* Set the raw phase control word used by the DDS
+   */
+  inline void setPhaseWord(byte reg, uint32_t phase) {
+    ad983x_set_phase(&dds, reg, phase);
+  }
+
+  inline uint32_t computeFrequencyWord(uint32_t frequency) {
+    // This is a manual expansion of (frequency * 2^28) / m_frequency_mhz
+    // Since it doesn't require 64 bit multiplies or divides, it results in
+    // substantially smaller code sizes.
+    uint32_t lval = ((frequency & 0xFF) << 22) / (15625l * TSUNAMI_FREQUENCY);
+    uint32_t mval = ((frequency & 0xFF00) << 14) / (15625l * TSUNAMI_FREQUENCY);
+    uint32_t hval = ((frequency & 0xFF0000) << 6) / (15625l * TSUNAMI_FREQUENCY);
+    return (hval << 16) + (mval << 8) + lval;
+  }
 };
 
 extern Tsunami_Class Tsunami;

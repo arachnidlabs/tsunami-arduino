@@ -33,9 +33,6 @@ void setup() {
   // Initialize the Tsunami
   Tsunami.begin();
   
-  // Turn on the square wave output so we can measure phase
-  Tsunami.setSignOutput(SIGN_OUTPUT_MSB);
-  
   // Start with a default frequency of 1khz
   Tsunami.setFrequency(0, 1000.0);
 }
@@ -71,16 +68,7 @@ void commandFreq(char *name, char *args) {
 
 // Handles 'amp' commands
 void commandAmp(char *name, char *args) {
-  float amp = atof(args);
-  int value = 4096 - (int)(4096 * (amp / 6.0));
-
-  if(value <= 0) {
-    value = 0;
-  } else if(value >= 4096) {
-    value = 4095;
-  }
-  
-  Serial.println(value);
+  int value = (int)(atof(args) * 1000);
   Tsunami.setAmplitude(value);
 
   Serial.println("ok");
@@ -88,16 +76,7 @@ void commandAmp(char *name, char *args) {
 
 // Handles 'off' commands
 void commandOff(char *name, char *args) {
-  float offset = -atof(args);
-  
-  int value = (int)(2048 - (offset / 3.0) * 2048);
-
-  if(value < 0) {
-    value = 0;
-  } else if(value > 4095) {
-    value = 4095;
-  }
-  
+  int value = (int)(atof(args) * 1000);
   Tsunami.setOffset(value);
   
   Serial.println("ok");

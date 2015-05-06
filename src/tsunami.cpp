@@ -108,6 +108,7 @@ Tsunami_Class::Tsunami_Class() {
 }
 
 void Tsunami_Class::begin() {
+  // DDS control pin config.
 	pinMode(TSUNAMI_DDS_SLEEP, OUTPUT);
 	digitalWrite(TSUNAMI_DDS_SLEEP, LOW);
 
@@ -123,19 +124,27 @@ void Tsunami_Class::begin() {
   pinMode(TSUNAMI_DDS_CS, OUTPUT);
   digitalWrite(TSUNAMI_DDS_CS, HIGH);
 
+  // Other control pins
+  pinMode(TSUNAMI_SIGN_EN, OUTPUT);
+  digitalWrite(TSUNAMI_SIGN_EN, LOW);
+
+  // Frequency divider selection pin config.
   pinMode(TSUNAMI_FDIV_SEL_0, OUTPUT);
   pinMode(TSUNAMI_FDIV_SEL_1, OUTPUT);
   _set_divider();
 
+  // Enable SPI
   SPI.begin();
   SPI.setClockDivider(SPI_CLOCK_DIV2);
 
+  // Initialize DDS
   pinMode(TSUNAMI_DDS_RESET, OUTPUT);
   digitalWrite(TSUNAMI_DDS_RESET, HIGH);
   ad983x_start(&dds);
+  ad983x_set_sign_output(&dds, AD983X_SIGN_OUTPUT_MSB);
   digitalWrite(TSUNAMI_DDS_RESET, LOW);
-  Serial.println("DDS init done");
 
+  // Initialize DAC
   mcp49xx_init(&dac, spi_transfer, &dac_spi_settings);
 
   // Configure amplitude DAC
@@ -150,23 +159,40 @@ void Tsunami_Class::begin() {
   mcp49xx_set_is_shutdown(&dac, TSUNAMI_OFFSET_ID, false);
   mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, 2048);
 
-	current_reg = 0;
+	current_frequency_reg = 0;
+  current_phase_reg = 0;
 
 	// Initialize timer 1 to run at 2MHz and capture external events
 	TCCR1A &= ~_BV(WGM11) & ~_BV(WGM10);
 	TCCR1B &= ~_BV(WGM13) & ~_BV(WGM12) & ~_BV(CS12) & ~_BV(CS10);
 	TCCR1B |= _BV(CS11);
 	TIMSK1 |= _BV(ICIE1) | _BV(TOIE1);
+
+  // Enable PWM output on pin 10 from timer 4, so analogWrite works
+  TCCR4A |= _BV(PWM4B);
+
+  // Uncomment to increase pin 10 PWM frequency from ~500hz to ~8KHz
+  // TCCR4B &= ~_BV(CS42);
 }
 
+/* Returns the measured frequency on the Tsunami input, in hertz.
+ * If no valid signal is measured, or the Tsunami is not done measuring, NAN
+ * is returned.
+ */
 float Tsunami_Class::measureFrequency() {
     float ret;
+
+    // Disable interrupts so we get a consistent reading from the registers
     cli();
+
+    // Retrieve and calculate the frequency if available
     if(counter_status == COUNTER_STATUS_VALID || counter_status == COUNTER_STATUS_VALID_OVF) {
       ret = (2000000.0 / interval) * (1 << counter_divider);
     } else {
       ret = NAN;
     }
+
+    // Re-enable interrupts
     sei();
     return ret;
 }
