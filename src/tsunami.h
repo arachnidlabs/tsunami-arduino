@@ -30,9 +30,14 @@ extern "C" {
 #define TSUNAMI_FREQUENCY     16 // MHz
 
 #define TSUNAMI_DAC_BITS     12
-#define TSUNAMI_DAC_MAX      ((1 << TSUNAMI_DAC_BITS) - 1)
+#define TSUNAMI_DAC_RANGE    (1 << TSUNAMI_DAC_BITS)
 #define TSUNAMI_OFFSET_FS    3731 // Fullscale voltage offset in millivolts
 #define TSUNAMI_AMPLITUDE_FS 6606 // Fullscale amplitude in millivolts
+
+#define TSUNAMI_ADC_BITS     10
+#define TSUNAMI_ADC_RANGE    (1 << TSUNAMI_ADC_BITS)
+#define TSUNAMI_VIN_RANGE    3300 // Fullscale voltage offset in millivolts
+#define TSUNAMI_VIN_SCALING  ((((int32_t)TSUNAMI_VIN_RANGE) << 17) / TSUNAMI_ADC_RANGE)
 
 enum OutputMode {
   OUTPUT_MODE_SINE        = AD983X_OUTPUT_MODE_SINE,
@@ -131,26 +136,32 @@ public:
    */
   inline void setAmplitude(int millivolts) {
     //TODO: Allow for calibration
-    int32_t value = TSUNAMI_DAC_MAX * (int32_t)millivolts;
+    int32_t value = TSUNAMI_DAC_RANGE * (int32_t)millivolts;
     value /= TSUNAMI_AMPLITUDE_FS;
     if(value < 0)
       value = 0;
-    if(value >= TSUNAMI_DAC_MAX)
-      value = TSUNAMI_DAC_MAX;
+    if(value >= TSUNAMI_DAC_RANGE)
+      value = TSUNAMI_DAC_RANGE - 1;
 
-    mcp49xx_write(&dac, TSUNAMI_AMPLITUDE_ID, TSUNAMI_DAC_MAX - value);
+    mcp49xx_write(&dac, TSUNAMI_AMPLITUDE_ID, TSUNAMI_DAC_RANGE - value - 1);
   }
 
-  /* Measures peak to peak amplitude, returning a value in volts. Note that a
+  /* Measures peak to peak amplitude, returning a value in millivolts. Note that a
    * decrease in the amplitude will take some time to show up on the output, as
    * charge leaks from the storage cap. For a more accurate instantaneous
    * reading, set the TSUNAMI_PEAK pin to output, bring it low briefly, then
    * return it to input and wait a while for the capacitor to charge.
    */
-  inline float measurePeakVoltage() {
+  inline int16_t measurePeakVoltage() {
     // TODO: Provide for calibration of this value
     // TODO: Discharge cap, delay, read.
-    return (analogRead(TSUNAMI_PEAK) / 1024.0) * 10.0 + 0.32;
+    return ((analogRead(TSUNAMI_PEAK) * TSUNAMI_VIN_SCALING) >> 16) - TSUNAMI_VIN_RANGE;
+  }
+
+  /* Measures instantaneous voltage, returning a value in millivolts.
+   */
+  inline int16_t measureCurrentVoltage() {
+    return ((analogRead(TSUNAMI_VIN) * TSUNAMI_VIN_SCALING) >> 16) - TSUNAMI_VIN_RANGE;
   }
 
   /* Measures frequency, returning a value in Hz.
@@ -181,12 +192,12 @@ public:
    */
   inline void setOffset(int millivolts) {
     // TODO: Allow for calibration
-    int32_t value = TSUNAMI_DAC_MAX * (int32_t)(millivolts + TSUNAMI_OFFSET_FS);
+    int32_t value = TSUNAMI_DAC_RANGE * (int32_t)(millivolts + TSUNAMI_OFFSET_FS);
     value /= TSUNAMI_OFFSET_FS * 2;
     if(value < 0)
       value = 0;
-    if(value >= TSUNAMI_DAC_MAX)
-      value = TSUNAMI_DAC_MAX;
+    if(value >= TSUNAMI_DAC_RANGE)
+      value = TSUNAMI_DAC_RANGE - 1;
 
     mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, value);
   }

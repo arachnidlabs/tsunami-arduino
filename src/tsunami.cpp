@@ -159,6 +159,9 @@ void Tsunami_Class::begin() {
   mcp49xx_set_is_shutdown(&dac, TSUNAMI_OFFSET_ID, false);
   mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, 2048);
 
+  // Configure ADC to use internal 2.56V reference
+  analogReference(INTERNAL);
+
 	current_frequency_reg = 0;
   current_phase_reg = 0;
 
