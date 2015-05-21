@@ -197,6 +197,7 @@ float Tsunami_Class::measureFrequency() {
 
     // Re-enable interrupts
     sei();
+
     return ret;
 }
 
