@@ -85,7 +85,7 @@ bool test_amplitude_set() {
 
   Tsunami.setAmplitude(1000);
   delay(500);
-  assert_nearly_equal("input_amp_1", Tsunami.measurePeakVoltage(), 0, 100);
+  assert_nearly_equal("input_amp_1", Tsunami.measurePeakVoltage(), -1150, 100);
 
   Tsunami.setAmplitude(0);
   delay(500);
@@ -106,9 +106,12 @@ bool test_freq_phase() {
   assert_nearly_equal("input_freq_100k", (int32_t)Tsunami.measureFrequency(), 100000l, 2l);
   assert_nearly_equal("input_phase_100k", (int16_t)(1000 * Tsunami.measurePhase()), 1000, 1);
 
-  Tsunami.setFrequency(2000000.0);
+  Tsunami.setFrequency(1000000.0);
+  // Reset phase counter for sensitive measurement
+  Tsunami.reset(true); Tsunami.reset(false);
   delay(100);
-  assert_nearly_equal("input_freq_2m", (int32_t)Tsunami.measureFrequency(), 2000000l, 2l);
+  assert_nearly_equal("input_freq_2m", (int32_t)Tsunami.measureFrequency(), 1000000l, 2l);
+  assert_nearly_equal("input_phase_1m", (int16_t)(1000 * Tsunami.measurePhase()), 730, 1);
 }
 
 test_t tests[] = {

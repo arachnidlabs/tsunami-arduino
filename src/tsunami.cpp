@@ -32,9 +32,10 @@ static inline void _set_divider() {
 }
 
 static inline void _increase_divider() {
-  if(counter_divider < 16) {
+  if(counter_divider < 12) {
     counter_divider += 4;
     _set_divider();
+    counter_status = COUNTER_STATUS_INVALID;
   }
 }
 
@@ -42,6 +43,7 @@ static inline void _reduce_divider() {
   if(counter_divider >= 4) {
     counter_divider -= 4;
     _set_divider();
+    counter_status = COUNTER_STATUS_INVALID;
   }
 }
 
@@ -50,7 +52,6 @@ ISR(TIMER1_CAPT_vect) {
   last_edge = ICR1;
 
   if(interval < 1024) {
-    counter_status = COUNTER_STATUS_INVALID;
     _increase_divider();
   } else {
     switch(counter_status) {
@@ -72,7 +73,6 @@ ISR(TIMER1_OVF_vect) {
     counter_status = COUNTER_STATUS_VALID_OVF;
     break;
   default:
-    counter_status = COUNTER_STATUS_INVALID;
     _reduce_divider();
     break;
   }
