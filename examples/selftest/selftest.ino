@@ -86,7 +86,9 @@ bool test_amplitude_set() {
 
   // TODO: Figure out why we don't get consistent values for this reading
   Tsunami.setAmplitude(1000);
-  delay(500);
+  pinMode(TSUNAMI_PEAK, OUTPUT);
+  pinMode(TSUNAMI_PEAK, INPUT);
+  delay(1000);
   assert_nearly_equal("input_amp_1", Tsunami.measurePeakVoltage(), 0, 3300);
 
   Tsunami.setAmplitude(0);
