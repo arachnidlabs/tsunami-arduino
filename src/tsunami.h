@@ -204,14 +204,14 @@ public:
 
   /* Configures whether or not the DDS sign signal is output on the AUX port.
    */
-  inline void auxSignOutput(bool enabled) {
-    if(enabled) {
-      pinMode(TSUNAMI_AUX, INPUT);
-      digitalWrite(TSUNAMI_AUX, LOW);
-      digitalWrite(TSUNAMI_SIGN_EN, HIGH);
-    } else {
-      digitalWrite(TSUNAMI_SIGN_EN, LOW);
-    }
+  inline void enableSignOutput() {
+    pinMode(TSUNAMI_AUX, INPUT);
+    digitalWrite(TSUNAMI_AUX, LOW);
+    digitalWrite(TSUNAMI_SIGN_EN, HIGH);
+  }
+
+  inline void disableSignOutput() {
+    digitalWrite(TSUNAMI_SIGN_EN, LOW);
   }
 
   /* Enable the RC filter on the AUX output.
@@ -220,15 +220,16 @@ public:
    * (with auxFiltering(true)). This can be useful, for instance, to generate
    * parameter sweeps and graph them on an external tool like an oscilloscope.
    */
-  inline void auxFiltering(bool enabled) {
-    if(enabled) {
-      pinMode(TSUNAMI_AUX_FILTER, OUTPUT);
-    } else {
-      pinMode(TSUNAMI_AUX_FILTER, INPUT);
-    }
+  inline void enableAuxiliaryFiltering() {
+    pinMode(TSUNAMI_AUX_FILTER, OUTPUT);
     digitalWrite(TSUNAMI_AUX_FILTER, LOW);
   }
   
+  inline void disableAuxiliaryFiltering() {
+    pinMode(TSUNAMI_AUX_FILTER, INPUT);
+    digitalWrite(TSUNAMI_AUX_FILTER, LOW);
+  }
+
   // Handle to the underlying DAC.
   mcp49xx_t dac;
 

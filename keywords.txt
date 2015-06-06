@@ -1,0 +1,17 @@
+Tsunami						KEYWORD1
+setOutputMode				KEYWORD2
+setFrequency				KEYWORD2
+reset						KEYWORD2
+sleep						KEYWORD2
+selectFrequency				KEYWORD2
+selectPhase					KEYWORD2
+setAmplitude				KEYWORD2
+measurePeakVoltage			KEYWORD2
+measureCurrentVoltage		KEYWORD2
+measureFrequency			KEYWORD2
+measurePhase				KEYWORD2
+setOffset					KEYWORD2
+enableSignOutput			KEYWORD2
+disableSignOutput			KEYWORD2
+enableAuxiliaryFiltering	KEYWORD2
+disableAuxiliaryFiltering	KEYWORD2
