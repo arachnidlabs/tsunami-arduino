@@ -61,7 +61,7 @@ bool read_usb_id() {
 bool test_zero_offset() {
   Tsunami.measureCurrentVoltage();
   delay(200);
-  assert_nearly_equal("input_offset", Tsunami.measureCurrentVoltage(), 0, 75);
+  assert_nearly_equal("input_offset", Tsunami.measureCurrentVoltage(), 0, 100);
   return true;
 }
 
@@ -70,10 +70,10 @@ bool test_offset_set() {
   int offset = Tsunami.measureCurrentVoltage();
   Tsunami.setOffset(-1000);
   delay(200);
-  assert_nearly_equal("output_offset_neg", Tsunami.measureCurrentVoltage(), offset - 1325, 75);
+  assert_nearly_equal("output_offset_neg", Tsunami.measureCurrentVoltage(), offset - 1325, 100);
   Tsunami.setOffset(1000);
   delay(200);
-  assert_nearly_equal("output_offset_pos", Tsunami.measureCurrentVoltage(), offset + 1325, 75);
+  assert_nearly_equal("output_offset_pos", Tsunami.measureCurrentVoltage(), offset + 1325, 100);
   return true;
 }
 
@@ -81,7 +81,7 @@ bool test_amplitude_set() {
   Tsunami.setFrequency(32768);
   Tsunami.setAmplitude(6000);
   delay(500);
-  assert_nearly_equal("input_amp_6", Tsunami.measurePeakVoltage(), 3048, 75);
+  assert_nearly_equal("input_amp_6", Tsunami.measurePeakVoltage(), 3048, 100);
 
   // TODO: Figure out why we don't get consistent values for this reading
   Tsunami.setAmplitude(1000);
@@ -114,7 +114,7 @@ bool test_freq_phase() {
   Tsunami.reset(true); Tsunami.reset(false);
   delay(100);
   assert_nearly_equal("input_freq_1m", (int32_t)Tsunami.measureFrequency(), 1000000l, 2l);
-  assert_nearly_equal("input_phase_1m", (int16_t)(1000 * Tsunami.measurePhase()), 730, 50);
+  assert_nearly_equal("input_phase_1m", (int16_t)(1000 * Tsunami.measurePhase()), 1000, 50);
 }
 
 test_t tests[] = {
