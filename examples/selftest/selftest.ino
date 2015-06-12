@@ -61,7 +61,7 @@ bool read_usb_id() {
 bool test_zero_offset() {
   Tsunami.measureCurrentVoltage();
   delay(200);
-  assert_nearly_equal("input_offset", Tsunami.measureCurrentVoltage(), 0, 200);
+  assert_nearly_equal("input_offset", Tsunami.measureCurrentVoltage(), 0, 75);
   return true;
 }
 
@@ -70,10 +70,10 @@ bool test_offset_set() {
   int offset = Tsunami.measureCurrentVoltage();
   Tsunami.setOffset(-1000);
   delay(200);
-  assert_nearly_equal("output_offset_neg", Tsunami.measureCurrentVoltage(), offset - 1000, 200);
+  assert_nearly_equal("output_offset_neg", Tsunami.measureCurrentVoltage(), offset - 1375, 75);
   Tsunami.setOffset(1000);
   delay(200);
-  assert_nearly_equal("output_offset_pos", Tsunami.measureCurrentVoltage(), offset + 1000, 200);
+  assert_nearly_equal("output_offset_pos", Tsunami.measureCurrentVoltage(), offset + 1375, 75);
   return true;
 }
 
@@ -81,8 +81,7 @@ bool test_amplitude_set() {
   Tsunami.setFrequency(32768);
   Tsunami.setAmplitude(6000);
   delay(500);
-  // Temporary values until we get production boards
-  assert_nearly_equal("input_amp_6", Tsunami.measurePeakVoltage(), 3300, 100);
+  assert_nearly_equal("input_amp_6", Tsunami.measurePeakVoltage(), 3048, 75);
 
   // TODO: Figure out why we don't get consistent values for this reading
   Tsunami.setAmplitude(1000);
@@ -103,12 +102,12 @@ bool test_freq_phase() {
   Tsunami.setFrequency(1000.0);
   delay(100);
   assert_nearly_equal("input_freq_1k", (int32_t)Tsunami.measureFrequency(), 1000l, 2l);
-  assert_nearly_equal("input_phase_1k", (int16_t)(1000 * Tsunami.measurePhase()), 1000, 1);
+  assert_nearly_equal("input_phase_1k", (int16_t)(1000 * Tsunami.measurePhase()), 0, 50);
 
   Tsunami.setFrequency(100000.0);
   delay(100);
   assert_nearly_equal("input_freq_100k", (int32_t)Tsunami.measureFrequency(), 100000l, 2l);
-  assert_nearly_equal("input_phase_100k", (int16_t)(1000 * Tsunami.measurePhase()), 1000, 1);
+  assert_nearly_equal("input_phase_100k", (int16_t)(1000 * Tsunami.measurePhase()), 0, 50);
 
   Tsunami.setFrequency(1000000.0);
   // Reset phase counter for sensitive measurement
