@@ -3,7 +3,7 @@
 #include <tsunami.h>
 
 #define LED_PIN 13
-#define RUN_REPEATEDLY true
+#define RUN_REPEATEDLY false
 
 char err[255];
 
