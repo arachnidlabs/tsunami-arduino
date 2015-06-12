@@ -70,10 +70,10 @@ bool test_offset_set() {
   int offset = Tsunami.measureCurrentVoltage();
   Tsunami.setOffset(-1000);
   delay(200);
-  assert_nearly_equal("output_offset_neg", Tsunami.measureCurrentVoltage(), offset - 1375, 75);
+  assert_nearly_equal("output_offset_neg", Tsunami.measureCurrentVoltage(), offset - 1325, 75);
   Tsunami.setOffset(1000);
   delay(200);
-  assert_nearly_equal("output_offset_pos", Tsunami.measureCurrentVoltage(), offset + 1375, 75);
+  assert_nearly_equal("output_offset_pos", Tsunami.measureCurrentVoltage(), offset + 1325, 75);
   return true;
 }
 
@@ -92,7 +92,7 @@ bool test_amplitude_set() {
 
   Tsunami.setAmplitude(0);
   delay(500);
-  assert_nearly_equal("input_amp_0", Tsunami.measurePeakVoltage(), -3130, 150);
+  assert_nearly_equal("input_amp_0", Tsunami.measurePeakVoltage(), 0, 150);
 
   return true;
 }
@@ -107,7 +107,7 @@ bool test_freq_phase() {
   Tsunami.setFrequency(100000.0);
   delay(100);
   assert_nearly_equal("input_freq_100k", (int32_t)Tsunami.measureFrequency(), 100000l, 2l);
-  assert_nearly_equal("input_phase_100k", (int16_t)(1000 * Tsunami.measurePhase()), 0, 50);
+  assert_nearly_equal("input_phase_100k", (int16_t)(1000 * Tsunami.measurePhase()), 200, 50);
 
   Tsunami.setFrequency(1000000.0);
   // Reset phase counter for sensitive measurement
