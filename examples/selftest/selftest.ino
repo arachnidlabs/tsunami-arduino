@@ -61,7 +61,7 @@ bool read_usb_id() {
 bool test_zero_offset() {
   Tsunami.measureCurrentVoltage();
   delay(200);
-  assert_nearly_equal("input_offset", Tsunami.measureCurrentVoltage(), 25, 125);
+  assert_nearly_equal("input_offset", Tsunami.measureCurrentVoltage(), 25, 200);
   return true;
 }
 
@@ -87,11 +87,11 @@ bool test_amplitude_set() {
   pinMode(TSUNAMI_PEAK, OUTPUT);
   pinMode(TSUNAMI_PEAK, INPUT);
   delay(1000);
-  assert_nearly_equal("input_amp_1", Tsunami.measurePeakVoltage(), 580, 150);
+  assert_nearly_equal("input_amp_1", Tsunami.measurePeakVoltage(), 580, 200);
 
   Tsunami.setAmplitude(0);
   delay(500);
-  assert_nearly_equal("input_amp_0", Tsunami.measurePeakVoltage(), 70, 100);
+  assert_nearly_equal("input_amp_0", Tsunami.measurePeakVoltage(), 70, 200);
 
   return true;
 }
@@ -183,11 +183,14 @@ void error_code(int code) {
 }
 
 void loop() {
+  delay(1000);
   Serial.println("Executing test suite...");
   int result = run_tests();
   if(result == 0) {
     Serial.println("All tests passed.");
     digitalWrite(LED_PIN, HIGH);
+  } else {
+    Serial.println("Selftest FAIL.");
   }
   
   Serial.println("Press enter to rerun test suite.");
@@ -195,4 +198,3 @@ void loop() {
   error_code(result);
   Serial.println();
 }
-
