@@ -61,7 +61,7 @@ bool read_usb_id() {
 bool test_zero_offset() {
   Tsunami.measureCurrentVoltage();
   delay(200);
-  assert_nearly_equal("input_offset", Tsunami.measureCurrentVoltage(), 0, 100);
+  assert_nearly_equal("input_offset", Tsunami.measureCurrentVoltage(), 25, 125);
   return true;
 }
 
@@ -70,10 +70,10 @@ bool test_offset_set() {
   int offset = Tsunami.measureCurrentVoltage();
   Tsunami.setOffset(-1000);
   delay(200);
-  assert_nearly_equal("output_offset_neg", Tsunami.measureCurrentVoltage(), offset - 1325, 100);
+  assert_nearly_equal("output_offset_neg", Tsunami.measureCurrentVoltage(), offset - 1340, 100);
   Tsunami.setOffset(1000);
   delay(200);
-  assert_nearly_equal("output_offset_pos", Tsunami.measureCurrentVoltage(), offset + 1325, 100);
+  assert_nearly_equal("output_offset_pos", Tsunami.measureCurrentVoltage(), offset + 1265, 250);
   return true;
 }
 
@@ -81,18 +81,17 @@ bool test_amplitude_set() {
   Tsunami.setFrequency(32768);
   Tsunami.setAmplitude(6000);
   delay(500);
-  assert_nearly_equal("input_amp_6", Tsunami.measurePeakVoltage(), 3048, 150);
+  assert_nearly_equal("input_amp_6", Tsunami.measurePeakVoltage(), 3170, 150);
 
-  // TODO: Figure out why we don't get consistent values for this reading
   Tsunami.setAmplitude(1000);
   pinMode(TSUNAMI_PEAK, OUTPUT);
   pinMode(TSUNAMI_PEAK, INPUT);
   delay(1000);
-  assert_nearly_equal("input_amp_1", Tsunami.measurePeakVoltage(), 0, 3300);
+  assert_nearly_equal("input_amp_1", Tsunami.measurePeakVoltage(), 580, 150);
 
   Tsunami.setAmplitude(0);
   delay(500);
-  assert_nearly_equal("input_amp_0", Tsunami.measurePeakVoltage(), 0, 150);
+  assert_nearly_equal("input_amp_0", Tsunami.measurePeakVoltage(), 70, 100);
 
   return true;
 }
@@ -102,19 +101,19 @@ bool test_freq_phase() {
   Tsunami.setFrequency(1000.0);
   delay(100);
   assert_nearly_equal("input_freq_1k", (int32_t)Tsunami.measureFrequency(), 1000l, 2l);
-  assert_nearly_equal("input_phase_1k", (int16_t)(1000 * Tsunami.measurePhase()), 0, 50);
+  assert_nearly_equal("input_phase_1k", (int16_t)(1000 * Tsunami.measurePhase()), 30, 30);
 
   Tsunami.setFrequency(100000.0);
   delay(100);
   assert_nearly_equal("input_freq_100k", (int32_t)Tsunami.measureFrequency(), 100000l, 2l);
-  assert_nearly_equal("input_phase_100k", (int16_t)(1000 * Tsunami.measurePhase()), 200, 50);
+  assert_nearly_equal("input_phase_100k", (int16_t)(1000 * Tsunami.measurePhase()), 210, 25);
 
   Tsunami.setFrequency(1000000.0);
   // Reset phase counter for sensitive measurement
   Tsunami.reset(true); Tsunami.reset(false);
   delay(100);
   assert_nearly_equal("input_freq_1m", (int32_t)Tsunami.measureFrequency(), 1000000l, 2l);
-  assert_nearly_equal("input_phase_1m", (int16_t)(1000 * Tsunami.measurePhase()), 1000, 50);
+  assert_nearly_equal("input_phase_1m", (int16_t)(1000 * Tsunami.measurePhase()), 999, 2);
 }
 
 test_t tests[] = {
