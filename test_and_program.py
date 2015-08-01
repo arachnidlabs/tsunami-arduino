@@ -1,5 +1,7 @@
 #!/usr/bin/env python
+import itertools
 import os
+import platform
 import serial
 import subprocess
 import sys
@@ -19,14 +21,29 @@ AVRDUDE_CMD = [
 ]
 
 def find_port():
-    while True:
-        ttys = [filename for filename in os.listdir("/dev")
-                if filename.startswith("cu.")
-                and not "luetooth" in filename]
-        ttys.sort(key=lambda k:(k.startswith("cu."), k))
-        if ttys:
-            return "/dev/" + ttys[0]
-        time.sleep(0.1)
+    if platform.system() == "Windows":
+        import _winreg as winreg
+        while True:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "HARDWARE\\DEVICEMAP\\SERIALCOMM")
+            portname = None
+            for i in itertools.count():
+                try:
+                    portname = winreg.EnumValue(key, i)[1]
+                except WindowsError:
+                    if portname:
+                        return portname
+                    else:
+                        break
+            time.sleep(0.1)
+    else:
+        while True:
+            ttys = [filename for filename in os.listdir("/dev")
+                    if filename.startswith("cu.")
+                    and not "luetooth" in filename]
+            ttys.sort(key=lambda k:(k.startswith("cu."), k))
+            if ttys:
+                return "/dev/" + ttys[0]
+            time.sleep(0.1)
 
 
 def main():
