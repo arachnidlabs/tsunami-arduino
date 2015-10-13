@@ -2,28 +2,28 @@
 
 typedef enum {
   COUNTER_STATUS_INVALID,
-  COUNTER_STATUS_VALID,
-  COUNTER_STATUS_VALID_OVF,
-  COUNTER_STATUS_PENDING
+  COUNTER_STATUS_PENDING,
+  COUNTER_STATUS_VALID
 } counter_status_t;
 
 static volatile uint16_t last_edge = -1;
-static volatile uint16_t interval = -1;
-static volatile counter_status_t counter_status = COUNTER_STATUS_PENDING;
+static volatile counter_status_t counter_status = COUNTER_STATUS_INVALID;
 static volatile uint8_t counter_divider = 0;
-
+static volatile uint16_t counter_topword = 0;
+static volatile uint32_t instant_interval = 0;
+static volatile uint32_t average_interval = 0;
 
 /* This implements a counter state machine:
- * Initial state: COUNTER_STATUS_PENDING
- * COUNTER_STATUS_PENDING:  Falling edge  ->  COUNTER_STATUS_VALID
- *                          Overflow      ->  COUNTER_STATUS_INVALID, divider--
+ * Initial state: COUNTER_STATUS_INVALID
  * COUNTER_STATUS_INVALID:  Falling edge  ->  COUNTER_STATUS_PENDING
- *                          Overflow      ->  COUNTER_STATUS_INVALID, divider--
- * COUNTER_STATUS_VALID:    Falling edge  ->  COUNTER_STATUS_VALID
- *                          Overflow      ->  COUNTER_STATUS_VALID_OVF
- * COUNTER_STATUS_VALID_OVF:Falling edge  ->  COUNTER_STATUS_VALID
- *                          Overflow      ->  COUNTER_STATUS_INVALID, divider--
- * ANY                      Low count     ->  COUNTER_STATUS_INVALID, divider++
+ * COUNTER_STATUS_PENDING:  Falling edge  ->  if value low AND divider++
+ *                                            then COUNTER_STATUS_INVALID,
+ *                                            else COUNTER_STATUS_VALID
+ * COUNTER_STATUS_VALID:    Falling edge  ->  if value low AND divider++
+ *                                            then COUNTER_STATUS_INVALID,
+ *                                            else COUNTER_STATUS_VALID
+ * ANY:                          Overflow ->  if value high AND divider--
+ *                                            then COUNTER_STATUS_INVALID
  */
 
 static inline void _set_divider() {
@@ -31,50 +31,87 @@ static inline void _set_divider() {
   digitalWrite(TSUNAMI_FDIV_SEL_1, counter_divider & (1 << 3));
 }
 
-static inline void _increase_divider() {
+static inline uint8_t _increase_divider() {
   if(counter_divider < 12) {
     counter_divider += 4;
     _set_divider();
-    counter_status = COUNTER_STATUS_INVALID;
+    return 1;
   }
+  return 0;
 }
 
-static inline void _reduce_divider() {
+static inline uint8_t _reduce_divider() {
   if(counter_divider >= 4) {
     counter_divider -= 4;
     _set_divider();
-    counter_status = COUNTER_STATUS_INVALID;
+    return 1;
   }
+  return 0;
 }
 
 ISR(TIMER1_CAPT_vect) {
-  interval = ICR1 - last_edge;
-  last_edge = ICR1;
-
-  if(interval < 1024) {
-    _increase_divider();
-  } else {
-    switch(counter_status) {
-    case COUNTER_STATUS_VALID:
-    case COUNTER_STATUS_VALID_OVF:
-    case COUNTER_STATUS_PENDING:
-      counter_status = COUNTER_STATUS_VALID;
-      break;
-    case COUNTER_STATUS_INVALID:
-      counter_status = COUNTER_STATUS_PENDING;
-      break;
+  uint16_t this_edge;
+  
+  // It's good practice to only read a "live" register once: store ICR1
+  this_edge = ICR1;
+  
+  // If there isn't any recent edge capture count recorded ("invalid"),
+  // just move into "pending" state and wait for a second falling edge;
+  // Otherwise calculate the full count (including any roll-overs) from
+  // the last edge to this one, then multiply it by sixteen; we do that
+  // because even though the next step - calculating a moving average - 
+  // is quite useful to smooth out things, it has the drawback of never
+  // actually reaching the exact measured value it filters; however, by
+  // feeding it sixteen times the real value to be filtered the average
+  // gets a chance to converge close enough to its target that dividing
+  // it back by sixteen at the end returns the exact value that we seek
+  switch(counter_status) {
+  case COUNTER_STATUS_INVALID:
+    average_interval = 0;
+    counter_status = COUNTER_STATUS_PENDING;
+    break;    
+  default:  
+    instant_interval = (((uint32_t)(counter_topword) << 16) + this_edge - last_edge) << 4;
+    
+    // Same thing as Iavg = 1/8*Inew + 7/8*Iavg but it gets rid of "x7"
+    if (average_interval == 0) {
+      average_interval = instant_interval;
+    } else {
+      average_interval += (int32_t)(instant_interval - average_interval) >> 3;
     }
+    
+    // 0x50000 is the interval count for 3.2MHz, our upper limit point;
+    // 0x100000 (1 << 16 times sixteen) is our low-count limit where we
+    // switch dividers; it's about one divider step (x16) times smaller
+    // than our other switching threshold, assuring that the count will
+    // still fit below that threshold after the divider gets increased;
+    // The ratio of the two thresholds is not exactly 1:16 though since
+    // we want some hysteresis there to avoid endless up/down switching
+    if(((instant_interval < 0x100000) && (_increase_divider())) || (instant_interval < 0x50000)) {
+      counter_status = COUNTER_STATUS_INVALID;
+    } else {
+      counter_status = COUNTER_STATUS_VALID;
+    }
+    break;
   }
+  
+  // Store the current edge time until we capture the next falling edge
+  last_edge = this_edge;
+  
+  // Start counting the number of times Timer1 rolls over between edges
+  counter_topword = 0;
 }
 
 ISR(TIMER1_OVF_vect) {
-  switch(counter_status) {
-  case COUNTER_STATUS_VALID:
-    counter_status = COUNTER_STATUS_VALID_OVF;
-    break;
-  default:
-    _reduce_divider();
-    break;
+  // 272 << 16 is the approximate count for 0.9Hz, our lower limit point;
+  // 16 << 16 is our high-count threshold for divider switching; we could
+  // keep counting actually, but the divided signal would drop under 15Hz
+  // and as a direct consequence the responsiveness would start to suffer
+  if(((counter_topword > 16) && (_reduce_divider())) || (counter_topword > 272)) {
+    counter_topword = 0;
+    counter_status = COUNTER_STATUS_INVALID;
+  } else {
+    counter_topword++;
   }
 }
 
@@ -165,10 +202,10 @@ void Tsunami_Class::begin() {
 	current_frequency_reg = 0;
   current_phase_reg = 0;
 
-	// Initialize timer 1 to run at 2MHz and capture external events
+	// Initialize timer 1 to run at 16MHz and capture external events
 	TCCR1A &= ~_BV(WGM11) & ~_BV(WGM10);
-	TCCR1B &= ~_BV(WGM13) & ~_BV(WGM12) & ~_BV(CS12) & ~_BV(CS10);
-	TCCR1B |= _BV(CS11);
+	TCCR1B &= ~_BV(WGM13) & ~_BV(WGM12) & ~_BV(CS12) & ~_BV(CS11);
+	TCCR1B |= _BV(ICNC1) | _BV(CS10);
 	TIMSK1 |= _BV(ICIE1) | _BV(TOIE1);
 
   // Enable PWM output on pin 10 from timer 4, so analogWrite works
@@ -183,21 +220,60 @@ void Tsunami_Class::begin() {
  * is returned.
  */
 float Tsunami_Class::measureFrequency() {
+    uint32_t signal_period;
+    uint8_t signal_divider;
     float ret;
 
     // Disable interrupts so we get a consistent reading from the registers
     cli();
 
-    // Retrieve and calculate the frequency if available
-    if(counter_status == COUNTER_STATUS_VALID || counter_status == COUNTER_STATUS_VALID_OVF) {
-      ret = (2000000.0 / interval) * (1 << counter_divider);
+    // Retrieve the instant interval length (multiplied by sixteen) and the
+    // divider expressed as the power of two by which the input was divided
+    signal_period = instant_interval;
+    signal_divider = counter_divider;
+
+    // Re-enable interrupts while the time consuming float division is done
+    sei();
+        
+    // Calculate the frequency if available, not forgetting that the signal
+    // period needs to be divided by sixteen to get the real counted value;
+    // Adding "8" to the 16x signal period is just the equivalent of adding
+    // "0.5" to it so it gets rounded to the nearest value, not simply down
+    if(counter_status == COUNTER_STATUS_VALID) {
+      ret = (16000000.0 / ((signal_period + 8) >> 4)) * (1 << signal_divider);
     } else {
       ret = NAN;
     }
+        
+    return ret;
+}
 
-    // Re-enable interrupts
+float Tsunami_Class::measureAverageFrequency() {
+    uint32_t signal_period;
+    uint8_t signal_divider;
+    float ret;
+
+    // Disable interrupts so we get a consistent reading from the registers
+    cli();
+
+    // Retrieve the average interval length (multiplied by sixteen) and the
+    // divider expressed as the power of two by which the input was divided
+    signal_period = average_interval;
+    signal_divider = counter_divider;
+
+    // Re-enable interrupts while the time consuming float division is done
     sei();
-
+    
+    // Calculate the frequency if available, not forgetting that the signal
+    // period needs to be divided by sixteen to get the real counted value;
+    // Adding "8" to the 16x signal period is just the equivalent of adding
+    // "0.5" to it so it gets rounded to the nearest value, not simply down
+    if(counter_status == COUNTER_STATUS_VALID) {
+      ret = (16000000.0 / ((signal_period + 8) >> 4)) * (1 << signal_divider);
+    } else {
+      ret = NAN;
+    }
+        
     return ret;
 }
 
