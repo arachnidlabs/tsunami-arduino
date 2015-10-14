@@ -165,13 +165,19 @@ public:
   }
 
   /* Measures frequency, returning a value in Hz.
-   * This works from approximately 32Hz upwards.
+   * This works from approximately 1.0Hz upwards.
    *
    * Return values are accurate, but will suffer some jitter due to the analog
    * nature of the input signal. Measuring the square wave output will give a more
    * precise result than measuring the sine wave output.
    */
   float measureFrequency();
+  
+  /* Same as above, but with a moving average ratio of "1/8 new data" applied.
+   * Ordinarily it tracks to the instant value rather quickly but whenever the
+   * divided signal is a really low frequency the reaction time is observable.
+   */
+  float measureAverageFrequency();
 
   /* Measures phase offset, returning a figure between 0 and 1. 0 indicates the
    * signals are 180 degrees out of phase, while 1 indicates the signals are
