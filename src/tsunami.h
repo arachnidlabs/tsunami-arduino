@@ -25,18 +25,18 @@ extern "C" {
 #define TSUNAMI_DAC_CS        7
 #define TSUNAMI_FDIV_SEL_0    31
 #define TSUNAMI_FDIV_SEL_1    30
-#define TSUNAMI_OFFSET_ID    1
-#define TSUNAMI_AMPLITUDE_ID 0
+#define TSUNAMI_OFFSET_ID     1
+#define TSUNAMI_AMPLITUDE_ID  0
 #define TSUNAMI_FREQUENCY     16 // MHz
 
 #define TSUNAMI_DAC_BITS     12
 #define TSUNAMI_DAC_RANGE    (1 << TSUNAMI_DAC_BITS)
-#define TSUNAMI_OFFSET_FS    3731 // Fullscale voltage offset in millivolts
+#define TSUNAMI_OFFSET_FS    4074 // Fullscale voltage offset in millivolts
 #define TSUNAMI_AMPLITUDE_FS 6606 // Fullscale amplitude in millivolts
 
 #define TSUNAMI_ADC_BITS     10
 #define TSUNAMI_ADC_RANGE    (1 << TSUNAMI_ADC_BITS)
-#define TSUNAMI_VIN_RANGE    3300 // Fullscale voltage offset in millivolts
+#define TSUNAMI_VIN_RANGE    3037 // Fullscale voltage offset in millivolts
 #define TSUNAMI_VIN_SCALING  ((((int32_t)TSUNAMI_VIN_RANGE) << 17) / TSUNAMI_ADC_RANGE)
 
 enum OutputMode {
@@ -158,6 +158,12 @@ public:
     return ((analogRead(TSUNAMI_PEAK) * TSUNAMI_VIN_SCALING) >> 16) - TSUNAMI_VIN_RANGE;
   }
 
+  /* Measures mean voltage, returning a value in millivolts.
+   */
+  inline int16_t measureMeanVoltage() {
+    return ((analogRead(TSUNAMI_VAVG) * TSUNAMI_VIN_SCALING) >> 16) - TSUNAMI_VIN_RANGE;
+  }
+
   /* Measures instantaneous voltage, returning a value in millivolts.
    */
   inline int16_t measureCurrentVoltage() {
@@ -188,7 +194,18 @@ public:
    */
   inline float measurePhase() {
     // TODO: Provide for frequency calibration
-    return analogRead(TSUNAMI_PHASE) / 1024.0;
+
+    int vphase;
+
+    // Configure ADC to use Vcc power rail reference
+    setAnalogRef(DEFAULT);
+
+    vphase = analogRead(TSUNAMI_PHASE);
+
+    // Configure ADC to use internal 2.56V reference
+    setAnalogRef(INTERNAL);
+
+    return (float)vphase / 1024;
   }
 
   /* Sets signal offset in millivolts.
@@ -259,6 +276,25 @@ private:
    */
   inline void setPhaseWord(byte reg, uint32_t phase) {
     ad983x_set_phase(&dds, reg, phase);
+  }
+
+  /* Select a reference voltage compared to which analog reads get measured
+   */
+  inline void setAnalogRef(uint8_t source) {
+    // Let the system know we changed the reference so it won't override us
+    analogReference(source);
+
+    // Switch to the selected Vref with the REFS bits in the ADMUX register
+    if(source == INTERNAL) {
+      ADMUX |= _BV(REFS0);
+      ADMUX |= _BV(REFS1);
+    } else {
+      ADMUX |= _BV(REFS0);
+      ADMUX &= ~_BV(REFS1);
+    }
+
+    // Apparently NOT waiting for the Vref capacitor to settle is NOT smart
+    delayMicroseconds(3000);
   }
 
   inline uint32_t computeFrequencyWord(uint32_t frequency) {
