@@ -13,6 +13,8 @@ static volatile uint16_t counter_topword = 0;
 static volatile uint32_t instant_interval = 0;
 static volatile uint32_t average_interval = 0;
 
+calibration_data_t cal_data[CAL_DATA_ALL];
+
 /* This implements a counter state machine:
  * Initial state: COUNTER_STATUS_INVALID
  * COUNTER_STATUS_INVALID:  Falling edge  ->  COUNTER_STATUS_PENDING
@@ -141,19 +143,23 @@ static void spi_transfer(void *ctx, char data[], int len) {
 }
 
 Tsunami_Class::Tsunami_Class() {
+  for(int i = 0; i < CAL_DATA_ALL; i++) {
+    cal_data[i].scale = 1.0;
+    cal_data[i].shift = 0.0;
+  }
   ad983x_init(&dds, spi_transfer, &dds_spi_settings);
 }
 
 void Tsunami_Class::begin() {
   // DDS control pin config.
-	pinMode(TSUNAMI_DDS_SLEEP, OUTPUT);
-	digitalWrite(TSUNAMI_DDS_SLEEP, LOW);
+  pinMode(TSUNAMI_DDS_SLEEP, OUTPUT);
+  digitalWrite(TSUNAMI_DDS_SLEEP, LOW);
 
-	pinMode(TSUNAMI_DDS_FSEL, OUTPUT);
-	digitalWrite(TSUNAMI_DDS_FSEL, LOW);
+  pinMode(TSUNAMI_DDS_FSEL, OUTPUT);
+  digitalWrite(TSUNAMI_DDS_FSEL, LOW);
 
-	pinMode(TSUNAMI_DDS_PSEL, OUTPUT);
-	digitalWrite(TSUNAMI_DDS_PSEL, LOW);
+  pinMode(TSUNAMI_DDS_PSEL, OUTPUT);
+  digitalWrite(TSUNAMI_DDS_PSEL, LOW);
 
   pinMode(TSUNAMI_DAC_CS, OUTPUT);
   digitalWrite(TSUNAMI_DAC_CS, HIGH);
@@ -199,20 +205,110 @@ void Tsunami_Class::begin() {
   // Configure ADC to use internal 2.56V reference
   setAnalogRef(INTERNAL);
 
-	current_frequency_reg = 0;
+  current_frequency_reg = 0;
   current_phase_reg = 0;
 
-	// Initialize timer 1 to run at 16MHz and capture external events
-	TCCR1A &= ~_BV(WGM11) & ~_BV(WGM10);
-	TCCR1B &= ~_BV(WGM13) & ~_BV(WGM12) & ~_BV(CS12) & ~_BV(CS11);
-	TCCR1B |= _BV(ICNC1) | _BV(CS10);
-	TIMSK1 |= _BV(ICIE1) | _BV(TOIE1);
+  // Initialize timer 1 to run at 16MHz and capture external events
+  TCCR1A &= ~_BV(WGM11) & ~_BV(WGM10);
+  TCCR1B &= ~_BV(WGM13) & ~_BV(WGM12) & ~_BV(CS12) & ~_BV(CS11);
+  TCCR1B |= _BV(ICNC1) | _BV(CS10);
+  TIMSK1 |= _BV(ICIE1) | _BV(TOIE1);
 
   // Enable PWM output on pin 10 from timer 4, so analogWrite works
   TCCR4A |= _BV(PWM4B);
 
   // Uncomment to increase pin 10 PWM frequency from ~500hz to ~8KHz
   // TCCR4B &= ~_BV(CS42);
+}
+
+/* Applies and saves calibration data for a single value; "scale" does not
+ * have a unit and "shift" is in whatever unit the value has (millivolts).
+ */
+uint8_t Tsunami_Class::setCalibrationData(CalibratedValue value, float scale, float shift) {
+  calibration_record_t cal_record;
+  uint8_t result = 0;
+
+  // This can only access a specific value; no global requests allowed
+  if(value < CAL_DATA_ALL) {
+    cal_record.magic = TSUNAMI_CALIBRATION;
+    cal_record.scale = scale;
+    cal_record.shift = shift;
+
+    // Write then read back to check whether the data was really saved
+    EEPROM.put(sizeof(cal_record) * value, cal_record);
+    EEPROM.get(sizeof(cal_record) * value, cal_record);
+
+    // Verify the retrieved data and if it is saved correctly apply it
+    if((cal_record.magic == TSUNAMI_CALIBRATION) &&
+      (cal_record.scale == scale) && (cal_record.shift == shift)) {
+      cal_data[value].scale = scale;
+      cal_data[value].shift = shift;
+      result = 1;
+    }
+  }
+
+  return result;
+}
+
+/* Returns the saved calibration data for a single value; "scale" does not
+ * have a unit and "shift" is in whatever unit the value has (millivolts);
+ * Note: this is the stored calibration data, not the current data in use!
+ */
+uint8_t Tsunami_Class::getCalibrationData(CalibratedValue value, float *scale, float *shift) {
+  calibration_record_t cal_record;
+  uint8_t result = 0;
+
+  // This can only access a specific value; no global requests allowed
+  if(value < CAL_DATA_ALL) {
+    EEPROM.get(sizeof(cal_record) * value, cal_record);
+
+    // Verify the retrieved signature and if it passes return the data
+    if(cal_record.magic == TSUNAMI_CALIBRATION) {
+      *scale = cal_record.scale;
+      *shift = cal_record.shift;
+      result = 1;
+    }
+  }
+
+  return result;
+}
+
+/* Applies saved calibration data for either a specific value, all values,
+ * or none of them: restores scale 1.0 and shift 0.0 but keeps saved data.
+ */
+uint8_t Tsunami_Class::useCalibrationData(CalibratedValue value) {
+  calibration_record_t cal_record;
+  uint8_t this_value, last_value;
+  uint8_t result = 1;
+
+  // The value can be either a specific one or global ("all" / "none")
+  if(value < CAL_DATA_ALL) {
+    this_value = value;
+    last_value = value;
+  } else {
+    this_value = 0;
+    last_value = CAL_DATA_ALL;
+  }
+
+  // A global value will loop for all values, a specific one only once
+  do {
+    if(value > CAL_DATA_ALL) {
+      cal_data[this_value].scale = 1.0;
+      cal_data[this_value].shift = 0.0;
+    } else {
+      EEPROM.get(sizeof(cal_record) * this_value, cal_record);
+
+      if(cal_record.magic == TSUNAMI_CALIBRATION) {
+        cal_data[this_value].scale = cal_record.scale;
+        cal_data[this_value].shift = cal_record.shift;
+      } else {
+        result = 0;
+      }
+    }
+    this_value++;
+  } while (this_value < last_value);
+
+  return result;
 }
 
 /* Returns the measured frequency on the Tsunami input, in hertz.
@@ -244,10 +340,14 @@ float Tsunami_Class::measureFrequency() {
     } else {
       ret = NAN;
     }
-        
+
     return ret;
 }
 
+/* Same as above, but with a moving average ratio of "1/8 new data" applied.
+ * Ordinarily it tracks to the instant value rather quickly but whenever the
+ * divided signal is a really low frequency the reaction time is observable.
+ */
 float Tsunami_Class::measureAverageFrequency() {
     uint32_t signal_period;
     uint8_t signal_divider;
@@ -263,7 +363,7 @@ float Tsunami_Class::measureAverageFrequency() {
 
     // Re-enable interrupts while the time consuming float division is done
     sei();
-    
+
     // Calculate the frequency if available, not forgetting that the signal
     // period needs to be divided by sixteen to get the real counted value;
     // Adding "8" to the 16x signal period is just the equivalent of adding
@@ -273,7 +373,7 @@ float Tsunami_Class::measureAverageFrequency() {
     } else {
       ret = NAN;
     }
-        
+
     return ret;
 }
 

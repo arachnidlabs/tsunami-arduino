@@ -8,6 +8,7 @@
  */
 
 #include <SPI.h>
+#include <EEPROM.h>
 #include <tsunami.h>
 
 void setup() {

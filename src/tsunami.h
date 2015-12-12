@@ -2,6 +2,7 @@
 #define __ARDUINO_TSUNAMI_H
 
 #include <Arduino.h>
+#include <EEPROM.h>
 #include <SPI.h>
 extern "C" {
   #include <ad983x/ad983x.h>
@@ -39,19 +40,59 @@ extern "C" {
 #define TSUNAMI_VIN_RANGE    3037 // Fullscale voltage offset in millivolts
 #define TSUNAMI_VIN_SCALING  ((((int32_t)TSUNAMI_VIN_RANGE) << 17) / TSUNAMI_ADC_RANGE)
 
+#define TSUNAMI_CALIBRATION  0xDa7aDa7a
+
 enum OutputMode {
   OUTPUT_MODE_SINE        = AD983X_OUTPUT_MODE_SINE,
   OUTPUT_MODE_TRIANGLE    = AD983X_OUTPUT_MODE_TRIANGLE,
 };
 
-extern volatile uint16_t tsunami_last_edge;
-extern volatile uint16_t tsunami_interval;
+enum CalibratedValue {
+  CAL_DATA_OFFSET         = 0,
+  CAL_DATA_AMPLITUDE      = 1,
+  CAL_DATA_MEAN_VALUE     = 2,
+  CAL_DATA_PEAK_VALUE     = 3,
+  CAL_DATA_CURRENT_VALUE  = 4,
+  CAL_DATA_ALL            = 5,
+  CAL_DATA_NONE           = 6,
+};
+
+typedef struct {
+  float     scale;
+  float     shift;
+} calibration_data_t ;
+
+typedef struct {
+  uint32_t  magic;
+  float     scale;
+  float     shift;
+} calibration_record_t ;
+
+extern calibration_data_t cal_data[CAL_DATA_ALL];
 
 class Tsunami_Class {
 public:
   Tsunami_Class();
   void begin();
 
+  /* Applies and saves calibration data for a single value; "scale" does not
+   * have a unit and "shift" is in whatever unit the value has (millivolts).
+   */
+  uint8_t setCalibrationData(CalibratedValue value, float scale, float shift);
+
+  /* Returns the saved calibration data for a single value; "scale" does not
+   * have a unit and "shift" is in whatever unit the value has (millivolts);
+   * Note: this is the stored calibration data, not the current data in use!
+   */
+  uint8_t getCalibrationData(CalibratedValue value, float *scale, float *shift);
+
+  /* Applies saved calibration data for either a specific value, all values,
+   * or none of them: restores scale 1.0 and shift 0.0 but keeps saved data.
+   */
+  uint8_t useCalibrationData(CalibratedValue value);
+
+  /* Set the output waveform to sine or triangle
+   */
   inline void setOutputMode(OutputMode out) {
     ad983x_set_output_mode(&dds, (ad983x_output_mode_t)out);
   }
@@ -131,12 +172,34 @@ public:
     digitalWrite(TSUNAMI_DDS_PSEL, reg);
   }
 
+  /* Sets signal offset in millivolts.
+   * When the DDS is disabled (sleep and reset are true), this function can be
+   * used to generate an output waveform directly, albeit at a very low sample
+   * rate.
+   */
+  inline void setOffset(int millivolts) {
+    float scale = cal_data[CAL_DATA_OFFSET].scale;
+    float shift = cal_data[CAL_DATA_OFFSET].shift;
+    int32_t value = (float)(millivolts * scale) + shift;
+    value += TSUNAMI_OFFSET_FS;
+    value *= TSUNAMI_DAC_RANGE;
+    value /= TSUNAMI_OFFSET_FS * 2;
+    if(value < 0)
+      value = 0;
+    if(value >= TSUNAMI_DAC_RANGE)
+      value = TSUNAMI_DAC_RANGE - 1;
+
+    mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, value);
+  }
+
   /*
    * Sets signal amplitude in millivolts.
    */
   inline void setAmplitude(int millivolts) {
-    //TODO: Allow for calibration
-    int32_t value = TSUNAMI_DAC_RANGE * (int32_t)millivolts;
+    float scale = cal_data[CAL_DATA_AMPLITUDE].scale;
+    float shift = cal_data[CAL_DATA_AMPLITUDE].shift;
+    int32_t value = (float)(millivolts * scale) + shift;
+    value *= TSUNAMI_DAC_RANGE;
     value /= TSUNAMI_AMPLITUDE_FS;
     if(value < 0)
       value = 0;
@@ -153,21 +216,41 @@ public:
    * return it to input and wait a while for the capacitor to charge.
    */
   inline int16_t measurePeakVoltage() {
-    // TODO: Provide for calibration of this value
     // TODO: Discharge cap, delay, read.
-    return ((analogRead(TSUNAMI_PEAK) * TSUNAMI_VIN_SCALING) >> 16) - TSUNAMI_VIN_RANGE;
+    float scale = cal_data[CAL_DATA_PEAK_VALUE].scale;
+    float shift = cal_data[CAL_DATA_PEAK_VALUE].shift;
+    int32_t value = analogRead(TSUNAMI_PEAK);
+    value *= TSUNAMI_VIN_SCALING;
+    value >>= 16;
+    value -= TSUNAMI_VIN_RANGE;
+    value = (float)(value * scale) + shift;
+    return (int16_t)value;
   }
 
   /* Measures mean voltage, returning a value in millivolts.
    */
   inline int16_t measureMeanVoltage() {
-    return ((analogRead(TSUNAMI_VAVG) * TSUNAMI_VIN_SCALING) >> 16) - TSUNAMI_VIN_RANGE;
+    float scale = cal_data[CAL_DATA_MEAN_VALUE].scale;
+    float shift = cal_data[CAL_DATA_MEAN_VALUE].shift;
+    int32_t value = analogRead(TSUNAMI_VAVG);
+    value *= TSUNAMI_VIN_SCALING;
+    value >>= 16;
+    value -= TSUNAMI_VIN_RANGE;
+    value = (float)(value * scale) + shift;
+    return (int16_t)value;
   }
 
   /* Measures instantaneous voltage, returning a value in millivolts.
    */
   inline int16_t measureCurrentVoltage() {
-    return ((analogRead(TSUNAMI_VIN) * TSUNAMI_VIN_SCALING) >> 16) - TSUNAMI_VIN_RANGE;
+    float scale = cal_data[CAL_DATA_CURRENT_VALUE].scale;
+    float shift = cal_data[CAL_DATA_CURRENT_VALUE].shift;
+    int32_t value = analogRead(TSUNAMI_VIN);
+    value *= TSUNAMI_VIN_SCALING;
+    value >>= 16;
+    value -= TSUNAMI_VIN_RANGE;
+    value = (float)(value * scale) + shift;
+    return (int16_t)value;
   }
 
   /* Measures frequency, returning a value in Hz.
@@ -208,23 +291,6 @@ public:
     return (float)vphase / 1024;
   }
 
-  /* Sets signal offset in millivolts.
-   * When the DDS is disabled (sleep and reset are true), this function can be
-   * used to generate an output waveform directly, albeit at a very low sample
-   * rate.
-   */
-  inline void setOffset(int millivolts) {
-    // TODO: Allow for calibration
-    int32_t value = TSUNAMI_DAC_RANGE * (int32_t)(millivolts + TSUNAMI_OFFSET_FS);
-    value /= TSUNAMI_OFFSET_FS * 2;
-    if(value < 0)
-      value = 0;
-    if(value >= TSUNAMI_DAC_RANGE)
-      value = TSUNAMI_DAC_RANGE - 1;
-
-    mcp49xx_write(&dac, TSUNAMI_OFFSET_ID, value);
-  }
-
   /* Configures whether or not the DDS sign signal is output on the AUX port.
    */
   inline void enableSignOutput() {
@@ -247,7 +313,7 @@ public:
     pinMode(TSUNAMI_AUX_FILTER, OUTPUT);
     digitalWrite(TSUNAMI_AUX_FILTER, LOW);
   }
-  
+
   inline void disableAuxiliaryFiltering() {
     pinMode(TSUNAMI_AUX_FILTER, INPUT);
     digitalWrite(TSUNAMI_AUX_FILTER, LOW);
