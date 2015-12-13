@@ -1,5 +1,6 @@
 #include <avr/boot.h>
 #include <SPI.h>
+#include <EEPROM.h>
 #include <tsunami.h>
 
 #define LED_PIN 13
