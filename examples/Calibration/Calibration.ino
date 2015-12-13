@@ -26,27 +26,25 @@ void setup() {
 // Waits until a newline arrives from the serial port
 void waitLine() {
   char key;
-  while(1) {
-    if(Serial.available()) {
-      key = Serial.read();
 
-      if(key == '\n')
-        return;
-    }
-  }
+  do {
+    while(!Serial.available());
+    key = Serial.read();
+  } while(key != '\n');
 }
 
 // Reads a line from the serial port, without timeout
 int readLine(char *buf, int len) {
   int pos = 0;
-  while(1) {
-    if(Serial.available()) {
-      buf[pos++] = Serial.read();
-  
-      if(pos == len || buf[pos - 1] == '\n')
-        return pos;
-    }
-  }
+
+  do {
+    while(!Serial.available());
+    buf[pos++] = Serial.read();
+  } while (pos < len && buf[pos-1] != '\n');
+
+  buf[--pos] = 0;
+
+  return pos;
 }
 
 int32_t roundToInt32(float value) {
